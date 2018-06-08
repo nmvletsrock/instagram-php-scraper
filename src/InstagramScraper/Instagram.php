@@ -398,7 +398,8 @@ class Instagram
     {
         $medias = [];
         $index = 0;
-        $response = Request::get(Endpoints::getAccountJsonLink($username), $this->generateHeaders($this->userSession));
+
+        $response = Request::get(Endpoints::getAccountPageLink($username), $this->generateHeaders($this->userSession));
         if (static::HTTP_NOT_FOUND === $response->code) {
             throw new InstagramNotFoundException('Account with given username does not exist.');
         }
@@ -406,12 +407,15 @@ class Instagram
             throw new InstagramException('Response code is ' . $response->code . '. Body: ' . static::getErrorBody($response->body) . ' Something went wrong. Please report issue.');
         }
 
-        $userArray = json_decode($response->raw_body, true, 512, JSON_BIGINT_AS_STRING);
-        if (!isset($userArray['graphql']['user'])) {
+        $userArray = self::extractSharedDataFromBody($response->raw_body);
+
+        if (!isset($userArray['entry_data']['ProfilePage'][0]['graphql']['user'])) {
             throw new InstagramNotFoundException('Account with this username does not exist', 404);
         }
 
-        $nodes = $userArray['graphql']['user']['edge_owner_to_timeline_media']['edges'];
+        //dd($userArray);
+
+        $nodes = $userArray['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges'];
 
         if (!isset($nodes) || empty($nodes)) {
             return [];
@@ -789,29 +793,33 @@ class Instagram
             if (empty($arr['graphql']['hashtag']['edge_hashtag_to_media']['count'])) {
                 return [];
             }
+            $maxId = $arr['graphql']['hashtag']['edge_hashtag_to_media']['page_info']['end_cursor'];
+            $hasNextPage = $arr['graphql']['hashtag']['edge_hashtag_to_media']['page_info']['has_next_page'];
+
             $nodes = $arr['graphql']['hashtag']['edge_hashtag_to_media']['edges'];
+
             foreach ($nodes as $mediaArray) {
                 if ($index === $count) {
-                    return $medias;
+                    return ['medias' => $medias, 'max_id' => $maxId, 'has_next_page' => $hasNextPage];
                 }
                 $media = Media::create($mediaArray['node']);
                 if (in_array($media->getId(), $mediaIds)) {
-                    return $medias;
+                    return ['medias' => $medias, 'max_id' => $maxId, 'has_next_page' => $hasNextPage];
                 }
                 if (isset($minTimestamp) && $media->getCreatedTime() < $minTimestamp) {
-                    return $medias;
+                    return ['medias' => $medias, 'max_id' => $maxId, 'has_next_page' => $hasNextPage];
                 }
                 $mediaIds[] = $media->getId();
                 $medias[] = $media;
                 $index++;
             }
             if (empty($nodes)) {
-                return $medias;
+                return ['medias' => $medias, 'max_id' => $maxId, 'has_next_page' => $hasNextPage];
             }
             $maxId = $arr['graphql']['hashtag']['edge_hashtag_to_media']['page_info']['end_cursor'];
             $hasNextPage = $arr['graphql']['hashtag']['edge_hashtag_to_media']['page_info']['has_next_page'];
         }
-        return $medias;
+        return ['medias' => $medias, 'max_id' => $maxId, 'has_next_page' => $hasNextPage];
     }
 
     /**
