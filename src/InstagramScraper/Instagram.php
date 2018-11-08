@@ -911,6 +911,34 @@ class Instagram
         }
         return $medias;
     }
+	
+     /**
+     * @param $tagName
+     *
+     * @return Media[]
+     * @throws InstagramException
+     * @throws InstagramNotFoundException
+     */
+    public function getCurrentTopFromTopMediasByTagName($tagName)
+    {
+        $response = Request::get(Endpoints::getMediasJsonByTagLink($tagName, ''),
+            $this->generateHeaders($this->userSession));
+        if ($response->code === 404) {
+            throw new InstagramNotFoundException('Account with given username does not exist.');
+        }
+        if ($response->code !== 200) {
+            throw new InstagramException('Response code is ' . $response->code . '. Body: ' . static::getErrorBody($response->body) . ' Something went wrong. Please report issue.');
+        }
+        $cookies = static::parseCookies($response->headers['Set-Cookie']);
+        $this->userSession['csrftoken'] = $cookies['csrftoken'];
+        $jsonResponse = json_decode($response->raw_body, true, 512, JSON_BIGINT_AS_STRING);
+        $medias = [];
+        $nodes = (array)@$jsonResponse['graphql']['hashtag']['edge_hashtag_to_top_posts']['edges'];
+        foreach ($nodes as $mediaArray) {
+            $medias[] = Media::create($mediaArray['node']);
+        }
+        return $medias;
+    }	
 
     /**
      * @param $facebookLocationId
