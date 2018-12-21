@@ -729,7 +729,17 @@ class Instagram
      */
     public function getAccountById($id)
     {
-        $username = $this->getUsernameById($id);
+        //$username = $this->getUsernameById($id);
+
+        $media = $this->getMediasByUserId($id);
+
+        if(!isset($media[0]))
+             throw new InstagramNotFoundException('Не удалось получить $media пользователя');
+
+        $mediaId = $media[0]->getId();
+
+        $username = $this->getMediaById( $mediaId )->getOwner()->getUsername();
+
         return $this->getAccount($username);
     }
 
